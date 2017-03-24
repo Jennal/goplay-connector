@@ -1,5 +1,5 @@
-# goplay-gate
-Gate server of GoPlay Framework
+# goplay-connector
+Connector server of GoPlay Framework
 
 # The MIT License
 
