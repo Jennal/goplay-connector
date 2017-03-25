@@ -1,5 +1,5 @@
-# goplay-connector
-Connector server of GoPlay Framework
+# GoPlay-Connector
+Connector server of [GoPlay](https://github.com/Jennal/goplay) Framework
 
 # The MIT License
 
