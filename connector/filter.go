@@ -41,20 +41,12 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 		return nil, err
 	}
 
-	aop.Parallel(func(c chan bool) {
-		ins.masterClient.Add(&ins.info, func(status pkg.Status) {
-			if status != pkg.STAT_OK {
-				err = log.NewError("Join master failed!")
-			}
-			c <- true
-		}, func(e *pkg.ErrorMessage) {
-			log.Error(err)
-			err = e
-			c <- true
-		})
-	})
+	_, em := ins.masterClient.Add(&ins.info)
+	if err != nil {
+		return nil, log.NewError(em.Error())
+	}
 
-	return ins, err
+	return ins, nil
 }
 
 func (self *Filter) UpdateInfoToMaster() {
