@@ -50,13 +50,10 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 }
 
 func (self *Filter) UpdateInfoToMaster() {
-	self.masterClient.Update(&self.info, func(status pkg.Status) {
-		if status != pkg.STAT_OK {
-			log.Errorf("Update info to master failed!")
-		}
-	}, func(err *pkg.ErrorMessage) {
-		log.Error(err)
-	})
+	_, err := self.masterClient.Update(&self.info)
+	if err != nil {
+		log.NewError(err.Error())
+	}
 }
 
 func (self *Filter) GetServiceName(route string) string {
@@ -78,15 +75,13 @@ func (self *Filter) GetService(name string) transfer.IClient {
 
 	sp, ok := self.serviceInfos[name]
 	if !ok {
-		aop.Parallel(func(c chan bool) {
-			self.masterClient.GetByName(name, func(psp master.ServicePack) {
-				self.serviceInfos[name] = psp
-				c <- true
-			}, func(err *pkg.ErrorMessage) {
-				log.Error(err)
-				c <- true
-			})
-		})
+		psp, err := self.masterClient.GetByName(name)
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
+
+		self.serviceInfos[name] = psp
 	}
 
 	sp, ok = self.serviceInfos[name]

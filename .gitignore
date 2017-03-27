@@ -23,6 +23,8 @@ _testmain.go
 *.test
 *.prof
 
+goplay-connector
+
 # VSCode
 .vscode
 /debug
