@@ -33,27 +33,15 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 		serviceInfos: make(map[string]master.ServicePack),
 		services:     make(map[string]transfer.IClient),
 		masterClient: master.NewMasterClient(tcp.NewClient()),
-		info:         master.NewServicePack(master.ST_CONNECTOR, NAME),
+		info:         master.NewServicePack(master.ST_CONNECTOR, NAME, server.Port()),
 	}
 
-	err := ins.masterClient.Connect(host, port)
+	err := ins.masterClient.Bind(server, &ins.info, host, port)
 	if err != nil {
 		return nil, err
 	}
 
-	_, em := ins.masterClient.Add(&ins.info)
-	if err != nil {
-		return nil, log.NewError(em.Error())
-	}
-
 	return ins, nil
-}
-
-func (self *Filter) UpdateInfoToMaster() {
-	_, err := self.masterClient.Update(&self.info)
-	if err != nil {
-		log.NewError(err.Error())
-	}
 }
 
 func (self *Filter) GetServiceName(route string) string {
@@ -152,18 +140,6 @@ func (self *Filter) GetService(name string) transfer.IClient {
 }
 
 func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to ignore */ {
-	sess.On(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
-		self.infoMutex.Lock()
-		self.info.ClientCount--
-		self.infoMutex.Unlock()
-		self.UpdateInfoToMaster()
-	})
-
-	self.infoMutex.Lock()
-	self.info.ClientCount++
-	self.infoMutex.Unlock()
-	self.UpdateInfoToMaster()
-
 	//TODO: check if ip block
 
 	return true
