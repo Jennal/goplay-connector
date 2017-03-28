@@ -57,7 +57,9 @@ func (self *Filter) GetService(name string) transfer.IClient {
 	self.servicesMutex.Lock()
 	if s, ok := self.services[name]; ok {
 		self.servicesMutex.Unlock()
-		return s
+		if s.IsConnected() {
+			return s
+		}
 	}
 	self.servicesMutex.Unlock()
 
@@ -74,11 +76,12 @@ func (self *Filter) GetService(name string) transfer.IClient {
 
 	sp, ok = self.serviceInfos[name]
 	if !ok {
+		log.Errorf("get service info failed!")
 		return nil
 	}
 
 	client := tcp.NewClient()
-	exitChan := make(chan bool)
+	exitChan := make(chan bool, 1)
 	client.On(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
 		self.services[name] = client
