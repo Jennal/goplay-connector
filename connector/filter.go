@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/jennal/goplay-master/master"
-	"github.com/jennal/goplay/aop"
 	"github.com/jennal/goplay/log"
 	"github.com/jennal/goplay/pkg"
+	"github.com/jennal/goplay/service"
 	"github.com/jennal/goplay/session"
 	"github.com/jennal/goplay/transfer"
 	"github.com/jennal/goplay/transfer/tcp"
@@ -19,7 +19,7 @@ type Filter struct {
 	serviceInfos map[string]master.ServicePack
 
 	servicesMutex sync.Mutex
-	services      map[string]transfer.IClient
+	services      map[string]*service.ServiceClient
 
 	masterClient *master.MasterClient
 
@@ -31,7 +31,7 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 	ins := &Filter{
 		server:       server,
 		serviceInfos: make(map[string]master.ServicePack),
-		services:     make(map[string]transfer.IClient),
+		services:     make(map[string]*service.ServiceClient),
 		masterClient: master.NewMasterClient(tcp.NewClient()),
 		info:         master.NewServicePack(master.ST_CONNECTOR, NAME, server.Port()),
 	}
@@ -80,57 +80,20 @@ func (self *Filter) GetService(name string) transfer.IClient {
 		return nil
 	}
 
-	client := tcp.NewClient()
-	exitChan := make(chan bool, 1)
+	cli := tcp.NewClient()
+	client := service.NewServiceClient(cli)
+	client.RegistFilter(NewRpcFilter(self.server, client))
+
 	client.On(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
+		defer self.servicesMutex.Unlock()
 		self.services[name] = client
-		self.servicesMutex.Unlock()
-
-		go func() {
-			aop.Recover(func() {
-			Loop:
-				for {
-					select {
-					case <-exitChan:
-						break Loop
-					default:
-						header, bodyBuf, err := client.Recv()
-						if err != nil {
-							log.Errorf("Recv:\n\terr => %v\n\theader => %#v\n\tbody => %#v | %v", err, header, bodyBuf, string(bodyBuf))
-							client.Disconnect()
-							break Loop
-						}
-
-						if header.Type == pkg.PKG_HEARTBEAT || header.Type == pkg.PKG_HEARTBEAT_RESPONSE {
-							continue Loop
-						}
-
-						log.Logf("Recv:\n\theader => %#v\n\tbody => %#v | %v\n\terr => %v\n", header, bodyBuf, string(bodyBuf), err)
-
-						cli := self.server.GetClientById(header.ClientID)
-						if cli != nil {
-							h := pkg.NewHeaderFromRpc(header)
-							cli.Send(h, bodyBuf)
-						}
-					}
-
-				}
-			}, func(err interface{}) {
-				if err != nil && err.(error) != nil {
-					log.Error(err.(error))
-				}
-
-				client.Disconnect()
-			})
-		}()
 	})
 	client.On(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
 		defer self.servicesMutex.Unlock()
 
 		delete(self.services, name)
-		exitChan <- true
 	})
 
 	err := client.Connect(sp.IP, sp.Port)
