@@ -66,12 +66,10 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 	})
 
 	backends, e := ins.masterClient.GetBackends()
-	if e != nil {
-		return nil, e
-	}
-
-	for _, backend := range backends {
-		ins.connectBackend(backend)
+	if e == nil {
+		for _, backend := range backends {
+			ins.connectBackend(backend)
+		}
 	}
 
 	return ins, nil
@@ -128,6 +126,22 @@ func (self *Filter) GetService(name string) transfer.IClient {
 
 func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to ignore */ {
 	//TODO: check if ip block
+
+	log.Log("OnNewClient: ", sess.Id())
+	/* Notify New Client to Backend */
+	header := sess.NewHeader(pkg.PKG_RPC_NOTIFY, sess.Encoding, master.ON_CONNECTOR_GOT_NET_CLIENT)
+	header = pkg.NewRpcHeader(header, sess.Id())
+
+	self.servicesMutex.Lock()
+	backends := make(map[string]*service.ServiceClient)
+	for name, item := range self.services {
+		backends[name] = item
+	}
+	self.servicesMutex.Unlock()
+
+	for _, backend := range backends {
+		backend.Send(header, []byte{})
+	}
 
 	return true
 }
