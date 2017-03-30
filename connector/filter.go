@@ -5,9 +5,9 @@
 //
 // http://opensource.org/licenses/MIT
 //
-// Unless required by applicable law or agreed to in writing, software distributed 
-// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
-// CONDITIONS OF ANY KIND, either express or implied. See the License for the 
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
 package connector
@@ -53,7 +53,55 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 		return nil, err
 	}
 
+	ins.masterClient.On(master.ON_BACKEND_UPDATED, ins, func(sp master.ServicePack) {
+		if item, ok := ins.serviceInfos[sp.Name]; ok {
+			if item.IP == sp.IP && item.Port == sp.Port {
+				ins.serviceInfos[sp.Name] = sp
+			}
+
+			return
+		}
+
+		ins.connectBackend(sp)
+	})
+
+	backends, e := ins.masterClient.GetBackends()
+	if e != nil {
+		return nil, e
+	}
+
+	for _, backend := range backends {
+		ins.connectBackend(backend)
+	}
+
 	return ins, nil
+}
+
+func (self *Filter) connectBackend(sp master.ServicePack) {
+	self.serviceInfos[sp.Name] = sp
+
+	cli := tcp.NewClient()
+	client := service.NewServiceClient(cli)
+	client.RegistFilter(NewRpcFilter(self.server, client))
+
+	client.On(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
+		self.servicesMutex.Lock()
+		defer self.servicesMutex.Unlock()
+
+		self.services[sp.Name] = client
+	})
+	client.On(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
+		self.servicesMutex.Lock()
+		defer self.servicesMutex.Unlock()
+
+		delete(self.services, sp.Name)
+		delete(self.serviceInfos, sp.Name)
+	})
+
+	err := client.Connect(sp.IP, sp.Port)
+	if err != nil {
+		log.Error(err)
+	}
 }
 
 func (self *Filter) GetServiceName(route string) string {
@@ -67,54 +115,15 @@ func (self *Filter) GetServiceName(route string) string {
 
 func (self *Filter) GetService(name string) transfer.IClient {
 	self.servicesMutex.Lock()
+	defer self.servicesMutex.Unlock()
+
 	if s, ok := self.services[name]; ok {
-		self.servicesMutex.Unlock()
 		if s.IsConnected() {
 			return s
 		}
 	}
-	self.servicesMutex.Unlock()
 
-	sp, ok := self.serviceInfos[name]
-	if !ok {
-		psp, err := self.masterClient.GetByName(name)
-		if err != nil {
-			log.Error(err)
-			return nil
-		}
-
-		self.serviceInfos[name] = psp
-	}
-
-	sp, ok = self.serviceInfos[name]
-	if !ok {
-		log.Errorf("get service info failed!")
-		return nil
-	}
-
-	cli := tcp.NewClient()
-	client := service.NewServiceClient(cli)
-	client.RegistFilter(NewRpcFilter(self.server, client))
-
-	client.On(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
-		self.servicesMutex.Lock()
-		defer self.servicesMutex.Unlock()
-		self.services[name] = client
-	})
-	client.On(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
-		self.servicesMutex.Lock()
-		defer self.servicesMutex.Unlock()
-
-		delete(self.services, name)
-	})
-
-	err := client.Connect(sp.IP, sp.Port)
-	if err != nil {
-		log.Error(err)
-		return nil
-	}
-
-	return client
+	return nil
 }
 
 func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to ignore */ {
