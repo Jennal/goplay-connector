@@ -124,21 +124,36 @@ func (self *Filter) GetService(name string) transfer.IClient {
 	return nil
 }
 
+func (self *Filter) GetAllBackends() map[string]*service.ServiceClient {
+	self.servicesMutex.Lock()
+	defer self.servicesMutex.Unlock()
+	backends := make(map[string]*service.ServiceClient)
+	for name, item := range self.services {
+		backends[name] = item
+	}
+
+	return backends
+}
+
 func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to ignore */ {
 	//TODO: check if ip block
 
 	log.Log("OnNewClient: ", sess.Id())
 	/* Notify New Client to Backend */
+	sess.Once(transfer.EVENT_CLIENT_DISCONNECTED, self, func(client transfer.IClient) {
+		header := sess.NewHeader(pkg.PKG_RPC_NOTIFY, sess.Encoding, master.ON_CONNECTOR_CLIENT_DISCONNECTED)
+		header = pkg.NewRpcHeader(header, sess.Id())
+
+		backends := self.GetAllBackends()
+		for _, backend := range backends {
+			backend.Send(header, []byte{})
+		}
+	})
+
 	header := sess.NewHeader(pkg.PKG_RPC_NOTIFY, sess.Encoding, master.ON_CONNECTOR_GOT_NET_CLIENT)
 	header = pkg.NewRpcHeader(header, sess.Id())
 
-	self.servicesMutex.Lock()
-	backends := make(map[string]*service.ServiceClient)
-	for name, item := range self.services {
-		backends[name] = item
-	}
-	self.servicesMutex.Unlock()
-
+	backends := self.GetAllBackends()
 	for _, backend := range backends {
 		backend.Send(header, []byte{})
 	}
