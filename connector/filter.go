@@ -138,7 +138,7 @@ func (self *Filter) GetAllBackends() map[string]*service.ServiceClient {
 func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to ignore */ {
 	//TODO: check if ip block
 
-	log.Log("OnNewClient: ", sess.Id())
+	log.Logf("OnNewClient: %d => %p", sess.Id(), sess)
 	/* Notify New Client to Backend */
 	sess.Once(transfer.EVENT_CLIENT_DISCONNECTED, self, func(client transfer.IClient) {
 		header := sess.NewHeader(pkg.PKG_RPC_NOTIFY, sess.Encoding, master.ON_CONNECTOR_CLIENT_DISCONNECTED)
@@ -162,7 +162,7 @@ func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to i
 }
 
 func (self *Filter) OnRecv(sess *session.Session, header *pkg.Header, body []byte) bool /* return false to ignore */ {
-	log.Logf("%p => %#v", sess, sess)
+	log.Logf("OnRecv: %d | %p => %#v", sess.Id(), sess, sess)
 	if header.Type == pkg.PKG_HEARTBEAT || header.Type == pkg.PKG_HEARTBEAT_RESPONSE {
 		return true
 	}
