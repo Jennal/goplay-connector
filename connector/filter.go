@@ -28,7 +28,7 @@ import (
 
 type Filter struct {
 	server       transfer.IServer
-	serviceInfos map[string]master.ServicePack
+	serviceInfos map[string]*master.ServicePack
 
 	servicesMutex sync.Mutex
 	services      map[string]*service.ServiceClient
@@ -42,7 +42,7 @@ type Filter struct {
 func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) {
 	ins := &Filter{
 		server:       server,
-		serviceInfos: make(map[string]master.ServicePack),
+		serviceInfos: make(map[string]*master.ServicePack),
 		services:     make(map[string]*service.ServiceClient),
 		masterClient: master.NewMasterClient(tcp.NewClient()),
 		info:         master.NewServicePack(master.ST_CONNECTOR, NAME, server.Port()),
@@ -56,42 +56,46 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 	ins.masterClient.On(master.ON_BACKEND_UPDATED, ins, func(sp master.ServicePack) {
 		if item, ok := ins.serviceInfos[sp.Name]; ok {
 			if item.IP == sp.IP && item.Port == sp.Port {
-				ins.serviceInfos[sp.Name] = sp
+				ins.servicesMutex.Lock()
+				ins.serviceInfos[sp.Name] = &sp
+				ins.servicesMutex.Unlock()
 			}
 
 			return
 		}
 
-		ins.connectBackend(sp)
+		ins.connectBackend(&sp)
 	})
 
 	backends, e := ins.masterClient.GetBackends()
 	if e == nil {
 		for _, backend := range backends {
-			ins.connectBackend(backend)
+			ins.connectBackend(&backend)
 		}
 	}
 
 	return ins, nil
 }
 
-func (self *Filter) connectBackend(sp master.ServicePack) {
-	self.serviceInfos[sp.Name] = sp
-
+func (self *Filter) connectBackend(sp *master.ServicePack) {
 	cli := tcp.NewClient()
 	client := service.NewServiceClient(cli)
 	client.RegistFilter(NewRpcFilter(self.server, client))
 
-	client.On(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
+	client.Once(transfer.EVENT_CLIENT_CONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
 		defer self.servicesMutex.Unlock()
 
+		// log.Log("+++++++++++++++++++++++++++++")
+		self.serviceInfos[sp.Name] = sp
 		self.services[sp.Name] = client
 	})
+	// log.Logf("************ Regist: %p | %p", client, self)
 	client.Once(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
 		defer self.servicesMutex.Unlock()
 
+		// log.Log("-----------------------------")
 		delete(self.services, sp.Name)
 		delete(self.serviceInfos, sp.Name)
 	})
