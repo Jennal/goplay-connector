@@ -88,7 +88,7 @@ func (self *Filter) connectBackend(sp master.ServicePack) {
 
 		self.services[sp.Name] = client
 	})
-	client.On(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
+	client.Once(transfer.EVENT_CLIENT_DISCONNECTED, self, func(cli transfer.IClient) {
 		self.servicesMutex.Lock()
 		defer self.servicesMutex.Unlock()
 
@@ -162,6 +162,7 @@ func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to i
 }
 
 func (self *Filter) OnRecv(sess *session.Session, header *pkg.Header, body []byte) bool /* return false to ignore */ {
+	log.Logf("%p => %#v", sess, sess)
 	if header.Type == pkg.PKG_HEARTBEAT || header.Type == pkg.PKG_HEARTBEAT_RESPONSE {
 		return true
 	}
