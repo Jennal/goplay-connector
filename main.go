@@ -13,6 +13,8 @@
 package main
 
 import (
+	"flag"
+
 	"github.com/jennal/goplay-connector/connector"
 	"github.com/jennal/goplay-master/master"
 	"github.com/jennal/goplay/cmd"
@@ -21,8 +23,18 @@ import (
 	"github.com/jennal/goplay/transfer/tcp"
 )
 
+var (
+	port *int
+)
+
+func init() {
+	port = flag.Int("p", connector.PORT, "port of the server")
+}
+
 func main() {
-	ser := tcp.NewServer("", connector.PORT)
+	flag.Parse()
+
+	ser := tcp.NewServer("", *port)
 	serv := service.NewService(connector.NAME, ser)
 
 	filter, err := connector.NewFilter(ser, "", master.PORT)
