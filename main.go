@@ -24,11 +24,15 @@ import (
 )
 
 var (
-	port *int
+	port        *int
+	master_host *string
+	master_port *int
 )
 
 func init() {
 	port = flag.Int("p", connector.PORT, "port of the server")
+	master_host = flag.String("master-host", "", "host of master server")
+	master_port = flag.Int("master-port", master.PORT, "port of master server")
 }
 
 func main() {
@@ -37,7 +41,7 @@ func main() {
 	ser := tcp.NewServer("", *port)
 	serv := service.NewService(connector.NAME, ser)
 
-	filter, err := connector.NewFilter(ser, "", master.PORT)
+	filter, err := connector.NewFilter(ser, *master_host, *master_port)
 	if err != nil {
 		log.Error(err)
 		return
