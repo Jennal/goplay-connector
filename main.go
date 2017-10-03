@@ -19,6 +19,7 @@ import (
 	"github.com/jennal/goplay-master/master"
 	"github.com/jennal/goplay/cmd"
 	"github.com/jennal/goplay/log"
+	"github.com/jennal/goplay/pkg"
 	"github.com/jennal/goplay/service"
 	"github.com/jennal/goplay/transfer/tcp"
 )
@@ -37,6 +38,7 @@ func init() {
 
 func main() {
 	flag.Parse()
+	pkg.SetHandShakeImpl(connector.NewHandShake())
 
 	ser := tcp.NewServer("", *port)
 	serv := service.NewService(connector.NAME, ser)

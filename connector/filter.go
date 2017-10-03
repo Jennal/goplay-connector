@@ -36,7 +36,7 @@ type Filter struct {
 	masterClient *master.MasterClient
 
 	infoMutex sync.Mutex
-	info      master.ServicePack
+	info      *master.ServicePack
 }
 
 func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) {
@@ -48,29 +48,29 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 		info:         master.NewServicePack(master.ST_CONNECTOR, NAME, server.Port()),
 	}
 
-	err := ins.masterClient.Bind(server, &ins.info, host, port)
+	err := ins.masterClient.Bind(server, ins.info, host, port)
 	if err != nil {
 		return nil, err
 	}
 
-	ins.masterClient.On(master.ON_BACKEND_UPDATED, ins, func(sp master.ServicePack) {
+	ins.masterClient.On(master.ON_BACKEND_UPDATED, ins, func(sp *master.ServicePack) {
 		if item, ok := ins.serviceInfos[sp.Name]; ok {
 			if item.IP == sp.IP && item.Port == sp.Port {
 				ins.servicesMutex.Lock()
-				ins.serviceInfos[sp.Name] = &sp
+				ins.serviceInfos[sp.Name] = sp
 				ins.servicesMutex.Unlock()
 			}
 
 			return
 		}
 
-		ins.connectBackend(&sp)
+		ins.connectBackend(sp)
 	})
 
 	backends, e := ins.masterClient.GetBackends()
 	if e == nil {
 		for _, backend := range backends {
-			ins.connectBackend(&backend)
+			ins.connectBackend(backend)
 		}
 	}
 
@@ -78,6 +78,20 @@ func NewFilter(server transfer.IServer, host string, port int) (*Filter, error) 
 }
 
 func (self *Filter) connectBackend(sp *master.ServicePack) {
+	//check if back exists
+	self.servicesMutex.Lock()
+	if si, ok := self.serviceInfos[sp.Name]; ok {
+		if s, ok := self.services[sp.Name]; ok &&
+			si.Type == sp.Type &&
+			si.IP == sp.IP &&
+			si.Port == sp.Port &&
+			s.IsConnected() {
+			self.servicesMutex.Unlock()
+			return
+		}
+	}
+	self.servicesMutex.Unlock()
+
 	cli := tcp.NewClient()
 	client := service.NewServiceClient(cli)
 	client.RegistFilter(NewRpcFilter(self.server, client))
@@ -100,10 +114,12 @@ func (self *Filter) connectBackend(sp *master.ServicePack) {
 		delete(self.serviceInfos, sp.Name)
 	})
 
+	// log.Logf("************ Connect: %#v", sp)
 	err := client.Connect(sp.IP, sp.Port)
 	if err != nil {
 		log.Error(err)
 	}
+	// log.Logf("************ Connected")
 }
 
 func (self *Filter) GetServiceName(route string) string {
@@ -166,11 +182,11 @@ func (self *Filter) OnNewClient(sess *session.Session) bool /* return false to i
 }
 
 func (self *Filter) OnRecv(sess *session.Session, header *pkg.Header, body []byte) bool /* return false to ignore */ {
-	log.Logf("OnRecv: %d | %p => %#v", sess.Id(), sess, sess)
 	if header.Type == pkg.PKG_HEARTBEAT || header.Type == pkg.PKG_HEARTBEAT_RESPONSE {
 		return true
 	}
 
+	log.Logf("OnRecv: %d | %p => %#v", sess.Id(), sess, sess)
 	name := self.GetServiceName(header.Route)
 	if name == "" {
 		return true
