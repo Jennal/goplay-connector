@@ -1,17 +1,21 @@
 package connector
 
-import "github.com/jennal/goplay/pkg"
-import "strings"
+import (
+	"sort"
+	"strings"
+
+	"github.com/jennal/goplay/pkg"
+)
 
 type HandShakeImpl struct {
 	*pkg.HandShakeImpl
-	routeMap pkg.RouteMap
+	routeMap map[string]bool
 }
 
 func NewHandShake() pkg.HandShake {
 	return &HandShakeImpl{
 		HandShakeImpl: pkg.NewHandShakeImpl(),
-		routeMap:      make(pkg.RouteMap),
+		routeMap:      map[string]bool{},
 	}
 }
 
@@ -23,19 +27,34 @@ func (r *HandShakeImpl) UpdateHandShakeResponse(resp *pkg.HandShakeResponse) {
 		}
 
 		if _, ok := r.routeMap[route]; !ok {
-			r.routeMap[route] = pkg.RouteIndex(len(r.routeMap) + 1)
+			r.routeMap[route] = true
 		}
 	}
 
-	r.UpdateRoutesMap(r.routeMap)
+	r.UpdateRoutesMap(r.calcRoutesMap())
 }
 
-// func (r *HandShakeImpl) ConvertRouteIndexToRpc(idx RouteIndex) RouteIndex {
-// 	//do nothing, connector will implement this func
-// 	return idx
-// }
+func (r *HandShakeImpl) calcRoutesMap() map[string]pkg.RouteIndex {
+	arr := r.GetKeys()
+	m := make(map[string]pkg.RouteIndex)
 
-// func (r *HandShakeImpl) ConvertRouteIndexFromRpc(idx RouteIndex) RouteIndex {
-// 	//do nothing, connector will implement this func
-// 	return idx
-// }
+	for i, str := range arr {
+		m[str] = pkg.RouteIndex(i + 1)
+	}
+
+	return m
+}
+
+func (r *HandShakeImpl) GetKeys() []string {
+	arr := []string{}
+
+	for k := range r.routeMap {
+		arr = append(arr, k)
+	}
+
+	sort.Slice(arr, func(i, j int) bool {
+		return arr[i] < arr[j]
+	})
+
+	return arr
+}
